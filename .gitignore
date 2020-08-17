@@ -2,3 +2,4 @@ cluster_result/
 bert_model/
 data/
 .vscode/
+.idea/
