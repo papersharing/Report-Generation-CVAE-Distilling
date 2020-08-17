@@ -75,7 +75,7 @@ def main(args):
         NLL_loss = NLL(logp, target)
 
         # KL Divergence
-        KL_loss = -0.5 * torch.sum(1 + logv - mean.pow(2) - logv.exp())
+        KL_LOSS = -0.5 * torch.sum(1 - rec_logv + logv - (logv.exp() + (mean - rec_mean).pow(2))/rec_logv.exp())
         KL_weight = kl_anneal_function(anneal_function, step, k, x0)
 
         return NLL_loss, KL_loss, KL_weight
