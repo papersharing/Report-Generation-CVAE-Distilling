@@ -75,7 +75,7 @@ def main(args):
         NLL_loss = NLL(logp, target)
 
         # KL Divergence
-        KL_LOSS = -0.5 * torch.sum(1 - rec_logv + logv - (logv.exp() + (mean - rec_mean).pow(2))/rec_logv.exp())
+        KL_loss = -0.5 * torch.sum(1 - rec_logv + logv - (logv.exp() + (mean - rec_mean).pow(2))/rec_logv.exp())
         KL_weight = kl_anneal_function(anneal_function, step, k, x0)
 
         return NLL_loss, KL_loss, KL_weight
@@ -113,11 +113,14 @@ def main(args):
                         batch[k] = to_var(v)
 
                 # Forward pass
-                logp, mean, logv, z = model(batch['input'], batch['length'])
+                logp, mean, logv, rec_mean, rec_logv = model(batch['news'], batch['news_length'],
+                                                             batch['N_news'], batch['N_news_length'],
+                                                             batch['N_reports'], batch['N_reports_length'],
+                                                             batch['input_report'], batch['report_length'])
 
                 # loss calculation
-                NLL_loss, KL_loss, KL_weight = loss_fn(logp, batch['target'],
-                    batch['length'], mean, logv, args.anneal_function, step, args.k, args.x0)
+                NLL_loss, KL_loss, KL_weight = loss_fn(logp, batch['report'],
+                    batch['report_length'], mean, logv, rec_mean, rec_logv, args.anneal_function, step, args.k, args.x0)
 
                 loss = (NLL_loss + KL_weight * KL_loss)/batch_size
 

@@ -104,7 +104,7 @@ class CDVAE(nn.Module):
         # REPARAMETERIZATION
         mean = self.hidden2mean(hidden)
         logv = self.hidden2logv(hidden)
-        std = torch.exp(0.5 * logv)
+        # std = torch.exp(0.5 * logv)
 
         rec_mean = self.rec_hidden2mean(rec_hidden)
         rec_logv = self.rec_hidden2logv(rec_hidden)

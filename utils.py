@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from torch.autograd import Variable
 from collections import defaultdict, Counter, OrderedDict
+import jieba
 
 class OrderedCounter(Counter, OrderedDict):
     'Counter that remembers the order elements are first encountered'
