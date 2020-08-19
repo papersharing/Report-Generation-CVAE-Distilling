@@ -7,9 +7,9 @@ from utils import to_var
 class CDVAE(nn.Module):
 
     def __init__(self, vocab_size, embedding_size, hidden_size, latent_size,
-                 sos_idx, eos_idx, pad_idx, unk_idx, max_sequence_length, num_layers=1, N, bidirectional=False):
+                 sos_idx, eos_idx, pad_idx, unk_idx, max_sequence_length, num_layers=1, N=20, bidirectional=False):
 
-        super(CDVAE, self).__init__()
+        super(2, self).__init__()
         self.tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
 
         self.max_sequence_length = max_sequence_length
@@ -156,9 +156,5 @@ class CDVAE(nn.Module):
         logp = logp.view(b, s, self.embedding.num_embeddings)
 
         return logp, mean, logv, rec_mean, rec_logv
-
-# class Rec_Encoder(nn.Module):
-#     def __init__(self):
-#         super(Rec_Encoder, self).__init__()
 
 

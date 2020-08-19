@@ -25,7 +25,7 @@ class NRData(Dataset):
         self.max_report_length = kwargs.get('max_report_length', 150)
         self.min_occ = kwargs.get('min_occ', 3)
 
-        self.raw_data_path = os.path.join(data_dir, 'data_' + split + '.txt')
+        self.raw_data_path = os.path.join(data_dir, split + '.csv')
         self.data_file = 'data_' + split + '.json'
         self.vocab_file = 'data_vocab.json'
 
@@ -45,7 +45,14 @@ class NRData(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
+        label = self.cluster_result[idx]
         idx = str(idx)
+
+        others = np.where(self.cluster_result == label)[0]
+        N_news = self.data[others]['news']
+        N_news_length = self.data[others]['news_length']
+        N_reports = self.data[others]['report']
+        N_reports_length = self.data[others]['report_length']
 
         return {
             'news': np.asarray(self.data[idx]['news']),
@@ -53,10 +60,10 @@ class NRData(Dataset):
             'input_report': np.asarray(self.data[idx]['input_report']),
             'news_length': self.data[idx]['news_length'],
             'report_length': self.data[idx]['report_length'],
-            'N_news':np.asarray(self.data[idx]['N_news']),
-            'N_reports': np.asarray(self.data[idx]['N_reports']),
-            'N_reports_length':self.data[idx]['N_reports_length'],
-            'N_news_length': self.data[idx]['N_news_length']
+            'N_news': np.asarray(N_news),
+            'N_reports': np.asarray(N_reports),
+            'N_reports_length': np.asarray(N_reports_length),
+            'N_news_length': np.asarray(N_news_length)
         }
 
     @property
@@ -115,28 +122,26 @@ class NRData(Dataset):
             news = cut_words(news)
             report = cut_words(report)
 
-            label = self.cluster_result[index]
-
-            others = np.where(self.cluster_result == label)[0]
-            N_news = []
-            N_reports = []
-
-            for i in others:
-                N_news += csv_file.iloc[i]['news']+['<sep>']
-                N_reports += csv_file.iloc[i]['reports']+['<sep>']
-
-            N_news = N_news[:-1]
-            N_reports = N_reports[:-1]
-
-            N_news_length = len(N_news)
-            N_reports_length = len(N_reports)
-
-
-            N_news.extend(['<pad>'] * (self.N * self.max_news_length - N_news_length))
-            N_reports(['<pad>'] * (self.N * self.max_report_length - N_reports_length))
-
-            N_news = [self.w2i.get(w, self.w2i['<unk>']) for w in N_news]
-            N_reports = [self.w2i.get(w, self.w2i['<unk>']) for w in N_reports]
+            # label = self.cluster_result[index]
+            #
+            # others = np.where(self.cluster_result == label)[0]
+            #
+            # N_news = []
+            # N_reports = []
+            # N_news_length = []
+            # N_reports_length = []
+            #
+            # for i in others:
+            #     news_temp = csv_file.iloc[i]['news']
+            #     report_temp = csv_file.iloc[i]['reports']
+            #     len_news_temp = len(news_temp)
+            #     len_report_temp = len(report_temp)
+            #     news_temp.extend(['<pad>'] * (self.max_news_length - N_news_length))
+            #     report_temp.extend(['<pad>'] * (self.max_report_length - N_reports_length))
+            #     N_news.append(news_temp)
+            #     N_reports.append(report_temp)
+            #     N_news_length.append(len_news_temp)
+            #     N_reports_length.append(len_report_temp)
 
             # news = ['<sos>'] + news
             news = news[:self.max_news_length]
@@ -160,12 +165,12 @@ class NRData(Dataset):
             data[id]['news'] = news
             data[id]['report'] = report
             data[id]['input_report'] = input_report
-            data[id]['N_news'] = N_news ##
-            data[id]['N_reports'] = N_reports ##
-            data[id]['input_report'] = input_report
+            # data[id]['N_news'] = N_news ##
+            # data[id]['N_reports'] = N_reports ##
+            data[id]['report_length'] = report_length
             data[id]['news_length'] = news_length
-            data[id]['N_reports_length'] = N_reports_length ##
-            data[id]['N_news_length'] = N_news_length ##
+            # data[id]['N_reports_length'] = N_reports_length ##
+            # data[id]['N_news_length'] = N_news_length ##
 
         with io.open(os.path.join(self.data_dir, self.data_file), 'wb') as data_file:
             data = json.dumps(data, ensure_ascii=False)
@@ -181,7 +186,7 @@ class NRData(Dataset):
         w2i = dict()
         i2w = dict()
 
-        special_tokens = ['<pad>', '<unk>', '<sos>', '<eos>', '<num>','<sep>']
+        special_tokens = ['<pad>', '<unk>', '<sos>', '<eos>', '<num>']
         for st in special_tokens:
             i2w[len(w2i)] = st
             w2i[st] = len(w2i)
