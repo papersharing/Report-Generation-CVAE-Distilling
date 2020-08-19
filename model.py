@@ -7,9 +7,9 @@ from utils import to_var
 class CDVAE(nn.Module):
 
     def __init__(self, vocab_size, embedding_size, hidden_size, latent_size,
-                 sos_idx, eos_idx, pad_idx, unk_idx, max_sequence_length, num_layers=1, bidirectional=False):
+                 sos_idx, eos_idx, pad_idx, unk_idx, max_sequence_length, num_layers=1, N, bidirectional=False):
 
-        super().__init__()
+        super(CDVAE, self).__init__()
         self.tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
 
         self.max_sequence_length = max_sequence_length
@@ -17,6 +17,7 @@ class CDVAE(nn.Module):
         self.eos_idx = eos_idx
         self.pad_idx = pad_idx
         self.unk_idx = unk_idx
+        self.N = N
 
         self.latent_size = latent_size
 
@@ -46,48 +47,68 @@ class CDVAE(nn.Module):
         self.latent2hidden = nn.Linear(latent_size, hidden_size * self.hidden_factor)
         self.outputs2vocab = nn.Linear(hidden_size * (2 if bidirectional else 1), vocab_size)
 
-    def forward(self, input_sequence, length, N_news_input, news_length, N_report_input, report_length, output_sequence,
+    def forward(self, input_sequence, length, N_news_input, N_news_length, N_reports_input, N_reports_length, output_sequence,
                 output_length):
+        '''
+
+        :param input_sequence: news (batch, max_news_words)
+        :param length: (batch)
+        :param N_news_input: (batch, N_news, max_news_words) N_news = N
+        :param news_length: (batch, N_news)
+        :param N_report_input: (batch, N_reports, max_reports_words)
+        :param report_length: (batch, N_reports)
+        :param output_sequence: (batch, max_report_words)
+        :param output_length: (batch)
+        :return:
+        '''
 
         batch_size = input_sequence.size(0)
 
-        sorted_lengths, sorted_idx = torch.sort(length, descending=True)
-        input_sequence = input_sequence[sorted_idx]
-
-        news_sorted_lengths, news_sorted_idx = torch.sort(news_length, descending=True)
-        N_news_input = N_news_input[news_sorted_idx]
-
-        report_sorted_lengths, report_sorted_idx = torch.sort(report_length, descending=True)
-        N_report_input = N_report_input[report_sorted_idx]
-
-        output_sorted_lengths, output_sorted_idx = torch.sort(output_length, descending=True)
-        output_sequence = output_sequence[output_sorted_idx]
+        # sorted_lengths, sorted_idx = torch.sort(length, descending=True)
+        # input_sequence = input_sequence[sorted_idx]
+        #
+        # output_sorted_lengths, output_sorted_idx = torch.sort(output_length, descending=True)
+        # output_sequence = output_sequence[output_sorted_idx]
 
         # ENCODER
         input_embedding = self.embedding(input_sequence)
-        news_embedding = self.embedding(N_news_input)
-        report_embedding = self.embedding(N_report_input)
         output_embedding = self.embedding(output_sequence)
 
-        packed_input = rnn_utils.pack_padded_sequence(input_embedding, sorted_lengths.data.tolist(), batch_first=True)
-        packed_news = rnn_utils.pack_padded_sequence(news_embedding, news_sorted_lengths.data.tolist(),
-                                                     batch_first=True)
-        packed_report = rnn_utils.pack_padded_sequence(report_embedding, report_sorted_lengths.data.tolist(),
-                                                       batch_first=True)
-        packed_output = rnn_utils.pack_padded_sequence(output_embedding, output_sorted_lengths.data.tolist(),
-                                                       batch_first=True)
+        packed_input = rnn_utils.pack_padded_sequence(input_embedding, length.data.tolist(), batch_first=True,
+                                                      enforce_sorted=False)
+        packed_output = rnn_utils.pack_padded_sequence(output_embedding, output_length.data.tolist(),
+                                                       batch_first=True, enforce_sorted=False)
 
         _, hidden = self.encoder_rnn(packed_input)
-        _, news_hidden = self.news_encoder(packed_news)
-        _, report_hidden = self.report_encoder(packed_news)
 
-        _, reversed_idx = torch.sort(sorted_idx)
-        _, news_reversed_idx = torch.sort(news_sorted_idx)
-        _, report_reversed_idx = torch.sort(report_sorted_idx)
+        N_news_input = N_news_input.permute(1, 0, 2)  #(N_news, batch, max_news_words)
+        N_reports_input = N_reports_input.permute(1, 0, 2)  #(N_reports, batch, max_reports_words)
 
-        hidden = hidden[reversed_idx][output_sorted_idx]
-        news_hidden = news_hidden[news_reversed_idx][output_sorted_idx]
-        report_hidden = report_hidden[report_reversed_idx][output_sorted_idx]
+        N_news_length = N_news_length.permute(1, 0)
+        N_reports_input = N_reports_input.permute(1, 0)
+
+        news_hidden = []
+        report_hidden = []
+        for i in range(self.N):
+            # (batch, max_news_words)
+            news_embedding = self.embedding(N_news_input[i])  # (batch, max_news_words, emb)
+            reports_embedding = self.embedding(N_reports_input[i])  # (batch, max_report_words, emb)
+            # (N, batch)
+            news_length = N_news_length[i]
+            reports_length = N_reports_input[i]
+
+            packed_news = rnn_utils.pack_padded_sequence(news_embedding, news_length.data.tolist(),
+                                                         batch_first=True, enforce_sorted=False)
+            packed_report = rnn_utils.pack_padded_sequence(reports_embedding, reports_length.data.tolist(),
+                                                         batch_first=True, enforce_sorted=False)
+
+            _, news_hidden_temp = self.news_encoder(packed_news)
+            _, report_hidden_temp = self.report_encoder(packed_report)
+            news_hidden.append(news_hidden_temp)
+            report_hidden.append(report_hidden_temp)
+
+        news_hidden = torch.mean(to_var(news_hidden), dim=0)
+        report_hidden = torch.mean(to_var(report_hidden), dim=0)
 
         if self.bidirectional or self.num_layers > 1:
             # flatten hidden state
@@ -135,3 +156,9 @@ class CDVAE(nn.Module):
         logp = logp.view(b, s, self.embedding.num_embeddings)
 
         return logp, mean, logv, rec_mean, rec_logv
+
+# class Rec_Encoder(nn.Module):
+#     def __init__(self):
+#         super(Rec_Encoder, self).__init__()
+
+
